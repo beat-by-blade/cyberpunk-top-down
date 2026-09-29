@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hub</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#e6e3f0;--fg:#17142b;--pn:#f8f7fc;--ln:#c4bedb;--a:#b8006f;--b:#006f8c;--mut:#6a6488}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#05050d;--fg:#e4e1f5;--pn:#0d0b1c;--ln:#2a2450;--a:#ff2e93;--b:#2ee6ff;--mut:#8b86ad}}
+:root[data-theme="dark"]{--bg:#05050d;--fg:#e4e1f5;--pn:#0d0b1c;--ln:#2a2450;--a:#ff2e93;--b:#2ee6ff;--mut:#8b86ad}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}
+main{max-width:760px;margin:0 auto;padding:14px}
+h1{margin:0;font-size:24px}h1 span{color:var(--a)}
+h2{font-size:15px;margin:22px 0 8px;display:flex;align-items:center;gap:10px}
+.mut{color:var(--mut)}
+.card{background:var(--pn);border:1px solid var(--ln);padding:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--ln);padding:8px 10px;min-height:40px;min-width:0}
+button{font:inherit;background:var(--pn);color:var(--fg);border:1px solid var(--ln);padding:8px 12px;min-height:40px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--b)}
+button.pri{border-color:var(--a);color:var(--a)}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--b);outline-offset:1px}
+.sw{width:28px;height:28px;min-height:0;padding:0;border-radius:50%}
+.sw.on{outline:2px solid var(--fg);outline-offset:2px}
+.rm,.pl{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--ln);margin-bottom:6px;background:var(--pn)}
+.rm span{flex:1;color:var(--mut);font-size:13px}
+.pl i{width:14px;height:14px;border-radius:50%}
+.pl em{margin-left:auto;font-style:normal;color:var(--mut)}.pl em.ok{color:#2a9d5c}
+#code{text-transform:uppercase;width:120px}
+#rt{font-size:38px;letter-spacing:.2em;margin:0;color:var(--a)}
+#cl{height:170px;overflow:auto;border:1px solid var(--ln);background:var(--pn);padding:8px;margin:8px 0;font-size:14px}
+#chat{display:flex;gap:8px}#chat input{flex:1}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw}
+</style></head><body><main>
+<h1>Game <span>Hub</span></h1>
+<p class="mut" style="margin:2px 0 12px">Pick a game, or open a lobby and gather a crew.</p>
+
+<section id="home">
+ <div class="card row">
+  <input id="nm" maxlength="16" aria-label="Your name" placeholder="Your name">
+  <div class="row" id="sw"></div>
+  <span class="mut" id="plays" style="margin-left:auto"></span>
+ </div>
+ <h2>Games</h2><div class="grid" id="games"></div>
+ <h2>Open rooms <button id="rf">Refresh</button></h2>
+ <div id="rooms"></div>
+ <div class="row" style="margin-top:8px"><input id="code" maxlength="4" placeholder="Room code" aria-label="Room code"><button id="jn">Join</button></div>
+</section>
+
+<section id="room" hidden>
+ <p class="mut" style="margin:0">Room code</p>
+ <p id="rt"></p><p id="rg" class="mut" style="margin:0 0 10px"></p>
+ <div id="pl"></div>
+ <div class="row"><button id="rd" class="pri"></button><button id="lv">Leave</button></div>
+ <div id="cl"></div>
+ <form id="chat"><input id="ci" maxlength="200" placeholder="Say something" aria-label="Chat message" autocomplete="off"><button>Send</button></form>
+</section>
+<div id="toast" role="status"></div>
+</main>
+<script>
+const K=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const col=c=>/^#[0-9a-f]{6}$/i.test(c)?c:'#888888';
+const store={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const COLORS=['#ff2e93','#2ee6ff','#ffb020','#39ff88','#9b5cff','#ff5a5a'];
+
+/* ADD YOUR GAMES HERE. max:1 = solo only (no rooms). max>1 = lobby-enabled.
+   Games get ?room=CODE&name=NAME&color=%23HEX in the URL when launched from a lobby. */
+const GAMES=[
+ {id:'wetwire',name:'Wetwire: The Cold Archive',desc:'Top-down cyberpunk stealth tactics. Netrunner or solo.',file:'wetwire.html',max:1},
+ {id:'coop',name:'Co-op heist (example)',desc:'Placeholder for your next multiplayer game. Add coop.html next to this file.',file:'coop.html',max:4,soon:1}
+];
+const gm=id=>GAMES.find(g=>g.id===id);
+
+let me={id:Math.random().toString(36).slice(2,8),name:store.get('hub.name','Runner'+(10+Math.floor(Math.random()*90))),color:col(store.get('hub.color',COLORS[0]))};
+let room=null,pending=null;const rooms={};
+const bc=new BroadcastChannel('hub-lobby');
+const send=m=>bc.postMessage({...m,from:me.id});
+let tt;function toast(s){const t=K('toast');t.textContent=s;t.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>t.style.opacity=0,3200)}
+
+/* profile */
+function profile(){K('nm').value=me.name;
+ K('sw').innerHTML=COLORS.map(c=>`<button class="sw${c===me.color?' on':''}" style="background:${c}" aria-label="Color ${c}" onclick="setColor('${c}')"></button>`).join('');
+ const p=store.get('hub.plays',{});K('plays').textContent='Runs launched: '+Object.values(p).reduce((a,b)=>a+b,0)}
+K('nm').oninput=e=>{me.name=e.target.value.trim().slice(0,16)||'Runner';store.set('hub.name',me.name)};
+function setColor(c){me.color=c;store.set('hub.color',c);profile()}
+
+/* games */
+K('games').innerHTML=GAMES.map(g=>`<div class="card"><b>${esc(g.name)}</b><p class="mut" style="margin:4px 0 10px;font-size:13px">${esc(g.desc)}</p><div class="row"><span class="mut" style="font-size:12px">${g.max>1?'1-'+g.max+' players':'Solo'}</span><span style="flex:1"></span><button class="pri" onclick="launch(gm('${g.id}'),'')">Play solo</button>${g.max>1?`<button onclick="create('${g.id}')">Create room</button>`:''}</div></div>`).join('');
+function launch(g,code){const p=store.get('hub.plays',{});p[g.id]=(p[g.id]||0)+1;store.set('hub.plays',p);
+ const u=g.file+(code?'?room='+code+'&':'?')+'name='+encodeURIComponent(me.name)+'&color='+encodeURIComponent(me.color);
+ if(g.soon){toast('Would open '+u+' (add the file to go live)');profile();return}location.href=u}
+
+/* lobby */
+const sys=t=>{room.chat.push({s:1,t});room.chat=room.chat.slice(-40)};
+const announce=()=>room&&send({t:'room',code:room.code,game:room.game,count:Object.keys(room.players).length,max:gm(room.game).max,host:me.name});
+function push(){send({t:'state',code:room.code,hostId:me.id,game:room.game,players:room.players,chat:room.chat});render()}
+function create(id){if(room)return;
+ const code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
+ room={code,game:id,hostId:me.id,players:{[me.id]:{id:me.id,name:me.name,color:me.color,ready:true,seen:Date.now()}},chat:[],last:Date.now()};
+ sys('Room '+code+' opened. Share the code.');push();announce()}
+function join(code){if(room)return;code=String(code).toUpperCase().trim();if(!code)return;pending=code;
+ send({t:'join',code,p:{id:me.id,name:me.name,color:me.color}});
+ setTimeout(()=>{if(pending===code){pending=null;toast('No room '+code+' found in this browser')}},1800)}
+K('jn').onclick=()=>join(K('code').value);K('rf').onclick=()=>{send({t:'ping'});renderRooms()};
+function leave(){if(!room)return;send(room.hostId===me.id?{t:'close',code:room.code}:{t:'leave',code:room.code,id:me.id});room=null;render()}
+K('lv').onclick=leave;addEventListener('beforeunload',()=>{if(room)send(room.hostId===me.id?{t:'close',code:room.code}:{t:'leave',code:room.code,id:me.id})});
+K('rd').onclick=()=>{if(!room)return;
+ if(room.hostId===me.id){if(!Object.values(room.players).every(p=>p.ready)){toast('Everyone needs to be ready');return}send({t:'start',code:room.code,game:room.game});launch(gm(room.game),room.code)}
+ else send({t:'ready',code:room.code,id:me.id,r:!room.players[me.id].ready})};
+K('chat').onsubmit=e=>{e.preventDefault();const t=K('ci').value.trim();K('ci').value='';if(!t||!room)return;
+ if(room.hostId===me.id){room.chat.push({n:me.name,c:me.color,t});room.chat=room.chat.slice(-40);push()}else send({t:'chat',code:room.code,n:me.name,c:me.color,txt:t})};
+
+bc.onmessage=e=>{const m=e.data,host=room&&room.hostId===me.id;
+ if(m.t==='ping'&&host)announce();
+ else if(m.t==='room'){rooms[m.code]={...m,seen:Date.now()};renderRooms()}
+ else if(m.t==='join'&&host&&m.code===room.code){const n=Object.keys(room.players).length;
+  if(n>=gm(room.game).max){send({t:'full',code:room.code,to:m.p.id});return}
+  room.players[m.p.id]={id:m.p.id,name:String(m.p.name).slice(0,16),color:col(m.p.color),ready:false,seen:Date.now()};sys(room.players[m.p.id].name+' joined');push();announce()}
+ else if(m.t==='full'&&m.to===me.id&&pending===m.code){pending=null;toast('That room is full')}
+ else if(m.t==='ready'&&host&&m.code===room.code&&room.players[m.id]){room.players[m.id].ready=!!m.r;room.players[m.id].seen=Date.now();push()}
+ else if(m.t==='chat'&&host&&m.code===room.code){room.chat.push({n:String(m.n).slice(0,16),c:col(m.c),t:String(m.txt).slice(0,200)});room.chat=room.chat.slice(-40);push()}
+ else if(m.t==='leave'&&host&&m.code===room.code&&room.players[m.id]){sys(room.players[m.id].name+' left');delete room.players[m.id];push();announce()}
+ else if(m.t==='hb'&&host&&room.players[m.id])room.players[m.id].seen=Date.now();
+ else if(m.t==='state'){
+  if(pending===m.code&&m.players[me.id]){room={code:m.code,game:m.game,hostId:m.hostId,players:m.players,chat:m.chat,last:Date.now()};pending=null;render()}
+  else if(room&&room.code===m.code&&!host){room.players=m.players;room.chat=m.chat;room.game=m.game;room.last=Date.now();render()}}
+ else if(m.t==='close'){delete rooms[m.code];if(room&&room.code===m.code&&!host){toast('Host closed the room');room=null}render()}
+ else if(m.t==='start'&&room&&room.code===m.code&&!host)launch(gm(m.game),m.code)};
+
+setInterval(()=>{const n=Date.now();
+ if(room){if(room.hostId===me.id){for(const id in room.players)if(id!==me.id&&n-room.players[id].seen>9000){sys(room.players[id].name+' timed out');delete room.players[id]}push();announce()}
+  else{send({t:'hb',code:room.code,id:me.id});if(n-room.last>9000){toast('Lost the host. Left the room.');room=null;render()}}}
+ renderRooms()},3000);
+
+function renderRooms(){const now=Date.now(),l=Object.values(rooms).filter(r=>now-r.seen<9000&&gm(r.game)&&!(room&&room.code===r.code));
+ K('rooms').innerHTML=l.length?l.map(r=>`<div class="rm"><b>${esc(r.code)}</b> ${esc(gm(r.game).name)}<span>${+r.count}/${+r.max} &middot; host ${esc(r.host)}</span><button onclick="join('${esc(r.code)}')" ${r.count>=r.max?'disabled':''}>Join</button></div>`).join(''):'<p class="mut" style="margin:0">No open rooms yet. Open this page in a second tab and create one.</p>'}
+function render(){const on=!!room;K('home').hidden=on;K('room').hidden=!on;renderRooms();if(!on)return;
+ const g=gm(room.game),host=room.hostId===me.id,ps=Object.values(room.players);
+ K('rt').textContent=room.code;K('rg').textContent=g.name+' \u00b7 '+ps.length+'/'+g.max+' players';
+ K('pl').innerHTML=ps.map(p=>`<div class="pl"><i style="background:${col(p.color)}"></i>${esc(p.name)}${p.id===room.hostId?' <span class="mut">(host)</span>':''}<em class="${p.ready?'ok':''}">${p.ready?'ready':'waiting'}</em></div>`).join('');
+ K('rd').textContent=host?'Start game':(room.players[me.id]&&room.players[me.id].ready?'Unready':'Ready up');
+ K('cl').innerHTML=room.chat.map(c=>c.s?`<div class="mut">${esc(c.t)}</div>`:`<div><b style="color:${col(c.c)}">${esc(c.n)}</b> ${esc(c.t)}</div>`).join('');K('cl').scrollTop=1e5}
+
+profile();render();send({t:'ping'});
+</script></body></html>
